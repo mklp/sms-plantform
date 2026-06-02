@@ -78,4 +78,16 @@ public interface SmsChannelMapper extends BaseMapper<SmsChannel> {
      */
     @Update("UPDATE sms_channel SET today_sent_count = today_sent_count + #{count}, update_time = NOW() WHERE id = #{channelId}")
     void incrementTodayCount(@Param("channelId") Long channelId, @Param("count") int count);
+
+    /**
+     * 查询所有可用通道列表
+     *
+     * @return 可用通道列表
+     */
+    @Select("SELECT * FROM sms_channel " +
+            "WHERE status = 'ACTIVE' " +
+            "  AND deleted = 0 " +
+            "  AND (consecutive_failures IS NULL OR consecutive_failures < 5) " +
+            "ORDER BY priority ASC, weight DESC")
+    java.util.List<SmsChannel> selectAvailableChannels();
 }
