@@ -12,6 +12,8 @@ import com.zhongway.sms.dao.entity.SmsTenant;
 import com.zhongway.sms.dao.mapper.SmsChannelMapper;
 import com.zhongway.sms.dao.mapper.SmsSendRecordMapper;
 import com.zhongway.sms.dao.mapper.SmsTenantMapper;
+import com.zhongway.sms.mq.producer.SmsSendMessage;
+import com.zhongway.sms.mq.producer.SmsSendProducer;
 import com.zhongway.sms.service.SmsSendService;
 import com.zhongway.sms.web.config.TenantContext;
 import org.apache.commons.lang3.StringUtils;
@@ -39,13 +41,16 @@ public class SmsSendServiceImpl implements SmsSendService {
     private final SmsTenantMapper smsTenantMapper;
     private final SmsChannelMapper smsChannelMapper;
     private final SmsSendRecordMapper smsSendRecordMapper;
+    private final SmsSendProducer smsSendProducer;
 
     public SmsSendServiceImpl(SmsTenantMapper smsTenantMapper,
                               SmsChannelMapper smsChannelMapper,
-                              SmsSendRecordMapper smsSendRecordMapper) {
+                              SmsSendRecordMapper smsSendRecordMapper,
+                              SmsSendProducer smsSendProducer) {
         this.smsTenantMapper = smsTenantMapper;
         this.smsChannelMapper = smsChannelMapper;
         this.smsSendRecordMapper = smsSendRecordMapper;
+        this.smsSendProducer = smsSendProducer;
     }
 
     @Override
@@ -311,23 +316,40 @@ public class SmsSendServiceImpl implements SmsSendService {
     }
 
     /**
-     * 执行发送 (实际项目中这里会调用 sms-core 或发送到 MQ)
+     * 执行发送 (实际项目中这里会发送到 MQ)
      */
     private boolean executeSend(SmsSendRecord record, SmsChannel channel) {
         logger.info("Executing SMS send via channel: {}, phone: {}", 
                 channel.getChannelCode(), record.getPhoneNumber());
         
         try {
-            // TODO: 集成 sms-core 进行实际发送
-            // 这里模拟发送过程
-            Thread.sleep(100); // 模拟网络延迟
+            // 构建 MQ 消息
+            SmsSendMessage smsMessage = SmsSendMessage.builder()
+                    .messageId(record.getMessageId())
+                    .tenantId(record.getTenantId())
+                    .phoneNumber(record.getPhoneNumber())
+                    .content(record.getContent())
+                    .signature(record.getSignature())
+                    .fullContent(record.getFullContent())
+                    .channelId(record.getChannelId())
+                    .channelCode(channel.getChannelCode())
+                    .protocolType(record.getProtocolType())
+                    .bizType(record.getBizType())
+                    .outOrderId(record.getOutOrderId())
+                    .chargeCount(record.getChargeCount())
+                    .retryCount(0)
+                    .sendTimestamp(System.currentTimeMillis())
+                    .build();
             
-            // 模拟发送结果 (实际应根据返回值判断)
+            // 发送到 MQ，由消费者异步处理
+            smsSendProducer.sendSmsMessage(smsMessage);
+            
+            logger.info("SMS message sent to MQ successfully: messageId={}", record.getMessageId());
             return true;
             
         } catch (Exception e) {
-            logger.error("SMS send failed", e);
-            record.setErrorCode("SEND_EXCEPTION");
+            logger.error("Failed to send SMS message to MQ", e);
+            record.setErrorCode("MQ_SEND_EXCEPTION");
             record.setErrorMessage(e.getMessage());
             return false;
         }

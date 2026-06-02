@@ -28,6 +28,13 @@
             <artifactId>sms-dao</artifactId>
         </dependency>
 
+        <!-- SMS MQ -->
+        <dependency>
+            <groupId>com.zhongway.sms</groupId>
+            <artifactId>sms-mq</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Spring Boot Starter -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

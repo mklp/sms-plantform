@@ -1,41 +1,53 @@
 ```
-# Compiled and build artifacts
+# Java/Maven specific
 *.class
-*.o
-*.obj
-*.out
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
 target/
+!.mvn/wrapper/maven-wrapper.jar
 
 # Dependencies
-.gradle/
-**/libs/**
-**/lib/**
+node_modules/
+.libs/
 
-# Logs and temp files
+# Logs
 *.log
-*.tmp
 
-# Environment
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment specific
 .env
 .env.local
-*.env.*
+.env.*
+!/.env.example
 
-# Editors
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Coverage reports
+# Testing
+*.coverage
 coverage/
 htmlcov/
-.coverage
+.nyc_output/
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
 
-# Package manager files
-**/node_modules/**
-**/vendor/**
+# Build systems
+.gradle/
+build/
+dist/
 ```
