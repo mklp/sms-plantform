@@ -17,6 +17,7 @@
         <module>sms-api</module>
         <module>sms-dao</module>
         <module>sms-service</module>
+        <module>sms-mq</module>
         <module>sms-web</module>
     </modules>
 

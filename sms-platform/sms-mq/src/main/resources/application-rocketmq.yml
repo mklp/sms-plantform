@@ -1,0 +1,21 @@
+# RocketMQ 配置
+
+# NameServer 地址
+rocketmq.name-server=127.0.0.1:9876
+
+# 生产者组
+rocketmq.producer.group=sms-producer-group
+# 是否开启事务消息
+rocketmq.producer.send-message-timeout=3000
+rocketmq.producer.retry-times-when-send-failed=2
+rocketmq.producer.retry-times-when-send-async-failed=2
+
+# 消费者配置 (可以在具体消费者类上覆盖)
+# rocketmq.consumer.topic=SMS_SEND_TOPIC
+# rocketmq.consumer.group=sms-consumer-group
+
+# 自定义 Topic 配置
+sms.mq.topic.send=SMS_SEND_TOPIC
+sms.mq.topic.report=SMS_REPORT_TOPIC
+sms.mq.tag.send=send
+sms.mq.tag.report=report

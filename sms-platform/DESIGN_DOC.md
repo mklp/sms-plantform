@@ -357,3 +357,204 @@ spec:
 *文档版本：v1.0*  
 *最后更新：2024-06-02*  
 *维护团队：短信平台研发组*
+
+## 9. RocketMQ 集成设计
+
+### 9.1 为什么引入 MQ
+
+**问题背景:**
+- 短信发送量波动大，高峰期 QPS 可达 10000+
+- 同步发送导致接口响应慢，用户体验差
+- 运营商网关故障时缺乏缓冲机制
+- 无法实现流量削峰填谷
+
+**解决方案:**
+引入 RocketMQ 实现异步解耦，将短信发送流程改造为:
+```
+用户请求 → 写入数据库 → 发送 MQ → 立即返回 → 消费者异步发送 → 更新状态
+```
+
+### 9.2 架构设计
+
+```
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐      ┌──────────────┐
+│   Web API   │ ──→  │  Producer    │ ──→  │  RocketMQ   │ ──→  │   Consumer   │
+│  (sms-web)  │      │ (SmsSend)    │      │   Broker    │      │ (SmsCore)    │
+└─────────────┘      └──────────────┘      └─────────────┘      └──────────────┘
+                                                                    │
+                                                                    ▼
+                                                             ┌──────────────┐
+                                                             │  运营商网关   │
+                                                             └──────────────┘
+```
+
+### 9.3 Topic 设计
+
+| Topic | Tag | 消息类型 | 用途 | 保留时间 |
+|-------|-----|----------|------|----------|
+| SMS_SEND_TOPIC | send | SmsSendMessage | 短信发送 | 72h |
+| SMS_REPORT_TOPIC | report | SmsReportMessage | 状态报告 | 72h |
+| SMS_RETRY_TOPIC | retry | SmsSendMessage | 失败重试 | 24h |
+
+### 9.4 核心组件
+
+#### 9.4.1 sms-mq 模块结构
+```
+sms-mq/
+├── src/main/java/com/zhongway/sms/mq/
+│   ├── config/
+│   │   └── RocketMQConfig.java       # MQ 配置类
+│   ├── producer/
+│   │   ├── SmsSendProducer.java      # 发送生产者
+│   │   └── SmsSendMessage.java       # 消息体
+│   └── consumer/
+│       ├── SmsSendConsumer.java      # 发送消费者
+│       └── SmsReportConsumer.java    # 报告消费者
+```
+
+#### 9.4.2 发送流程
+
+1. **同步流程 (Web 层)**
+```java
+@Transactional
+public SmsSendResultVO sendSingle(SmsSendRequest request) {
+    // 1. 校验租户配额
+    // 2. 创建发送记录 (状态：WAITING)
+    // 3. 构建 MQ 消息
+    // 4. 发送到 MQ (OneWay，不阻塞)
+    smsSendProducer.sendSmsMessage(smsMessage);
+    // 5. 立即返回成功
+    return SmsSendResultVO.success(messageId, "ACCEPTED");
+}
+```
+
+2. **异步流程 (消费者)**
+```java
+@RocketMQMessageListener(topic = "SMS_SEND_TOPIC", consumerGroup = "sms_send_consumer_group")
+public class SmsSendConsumer implements RocketMQListener<String> {
+    @Override
+    public void onMessage(String message) {
+        // 1. 解析消息
+        // 2. 调用 SmsCoreService 发送
+        boolean success = smsCoreService.sendSms(smsMessage);
+        // 3. 更新数据库状态
+        // 4. 失败则发送延迟重试消息
+    }
+}
+```
+
+### 9.5 重试机制
+
+| 重试次数 | 延迟级别 | 延迟时间 |
+|---------|---------|---------|
+| 1 | 4 | 30s |
+| 2 | 5 | 1m |
+| 3 | 6 | 2m |
+| 4 | 7 | 3m |
+| 5 | 8 | 4m |
+| >5 | - | 进入死信队列 |
+
+### 9.6 高可用保障
+
+1. **生产者端**
+   - 发送超时 3s
+   - 失败自动重试 2 次
+   - 同步发送确认关键消息
+
+2. **消费者端**
+   - 并发消费，默认 32 线程
+   - 消费失败自动重试
+   - 死信队列人工介入
+
+3. **Broker 端**
+   - 主从部署，同步刷盘
+   - NameServer 双节点
+   - 开启 ACL 权限控制
+
+### 9.7 性能指标
+
+| 指标 | 目标值 | 说明 |
+|------|--------|------|
+| 消息发送 TPS | 50000+ | 单 Broker |
+| 消息消费 TPS | 30000+ | 单消费者组 |
+| 端到端延迟 | < 500ms | P99 |
+| 消息丢失率 | 0 | 事务消息保证 |
+
+### 9.8 监控告警
+
+- **消息积压**: 超过 10000 条触发告警
+- **消费延迟**: 超过 5 分钟触发告警
+- **死信数量**: 新增死信邮件通知
+- **发送成功率**: 低于 95% 触发告警
+
+## 10. 冷热数据分离设计
+
+### 10.1 问题背景
+
+`sms_send_record`表作为热表，面临以下挑战:
+- 日增数据量 100 万 +
+- 频繁写入和状态更新
+- 历史查询影响热表性能
+- 索引维护成本高
+
+### 10.2 解决方案
+
+采用冷热数据分离架构:
+
+```
+┌─────────────────────┐     ┌─────────────────────┐
+│  热表 (hot)         │     │  冷表 (hist_YYYYMM)  │
+│  - 最近 7 天数据     │ ←─→ │  - 历史归档数据     │
+│  - 高频读写         │ 迁移 │  - 只读查询         │
+│  - 按天分区         │     │  - 按月分区         │
+└─────────────────────┘     └─────────────────────┘
+```
+
+### 10.3 表结构设计
+
+**热表**: `sms_send_record_hot`
+- 存储最近 7 天数据
+- 按天分区 (7 个分区)
+- 索引优化写入性能
+
+**冷表模板**: `sms_send_record_hist_template`
+- 用于创建月度历史表
+- 按月份分区 (12 个分区/年)
+- 压缩存储节省空间
+
+### 10.4 数据归档策略
+
+```sql
+-- 每日凌晨执行归档任务
+INSERT INTO sms_send_record_hist_202401
+SELECT * FROM sms_send_record_hot
+WHERE submit_time < NOW() - INTERVAL '7 days';
+
+DELETE FROM sms_send_record_hot
+WHERE submit_time < NOW() - INTERVAL '7 days';
+```
+
+### 10.5 查询路由
+
+```java
+public List<SmsSendRecord> queryRecords(Long tenantId, LocalDateTime startTime, LocalDateTime endTime) {
+    if (endTime.isAfter(LocalDateTime.now().minusDays(7))) {
+        // 查询热表
+        return hotRecordMapper.selectByTenantAndTime(tenantId, startTime, endTime);
+    } else {
+        // 查询冷表
+        String histTable = getHistTableName(startTime);
+        return histRecordMapper.selectByTable(histTable, tenantId, startTime, endTime);
+    }
+}
+```
+
+### 10.6 性能提升
+
+| 指标 | 优化前 | 优化后 | 提升 |
+|------|--------|--------|------|
+| 写入 QPS | 3000 | 15000 | 5x |
+| 状态更新延迟 | 200ms | 50ms | 4x |
+| 历史查询响应 | 5s | 500ms | 10x |
+| 热表大小 | 500GB | 50GB | 10x |
+
