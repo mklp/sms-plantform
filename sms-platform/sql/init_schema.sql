@@ -183,10 +183,10 @@ CREATE INDEX idx_signature_tenant ON sms_signature(tenant_id);
 CREATE INDEX idx_signature_status ON sms_signature(status);
 
 -- =====================================================
--- 6. 短信发送记录表 (核心业务表)
+-- 6. 短信发送记录表 - 热表 (最近 7 天高频数据)
 -- =====================================================
-DROP TABLE IF EXISTS sms_send_record;
-CREATE TABLE sms_send_record (
+DROP TABLE IF EXISTS sms_send_record_hot;
+CREATE TABLE sms_send_record_hot (
     id BIGINT PRIMARY KEY,
     tenant_id BIGINT NOT NULL COMMENT '租户 ID',
     message_id VARCHAR(64) NOT NULL UNIQUE COMMENT '消息 ID (全局唯一)',
@@ -206,7 +206,7 @@ CREATE TABLE sms_send_record (
     unit_price DECIMAL(10, 6) DEFAULT 0.0 COMMENT '单价',
     total_fee DECIMAL(10, 6) DEFAULT 0.0 COMMENT '总费用',
     
-    -- 状态追踪
+    -- 状态追踪 (热数据频繁更新)
     send_status VARCHAR(20) NOT NULL DEFAULT 'WAITING' COMMENT '发送状态',
     submit_time TIMESTAMP COMMENT '提交时间',
     send_time TIMESTAMP COMMENT '发送时间',
@@ -231,38 +231,66 @@ CREATE TABLE sms_send_record (
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted SMALLINT DEFAULT 0
-) PARTITION BY RANGE (create_time);
-COMMENT ON TABLE sms_send_record IS '短信发送记录表 - 按时间分区';
+);
+COMMENT ON TABLE sms_send_record_hot IS '短信发送记录热表 - 存储最近 7 天高频读写数据';
 
--- 创建索引
-CREATE INDEX idx_send_record_tenant ON sms_send_record(tenant_id);
-CREATE INDEX idx_send_record_message_id ON sms_send_record(message_id);
-CREATE INDEX idx_send_record_out_order_id ON sms_send_record(out_order_id);
-CREATE INDEX idx_send_record_phone ON sms_send_record(phone_number);
-CREATE INDEX idx_send_record_status ON sms_send_record(send_status);
-CREATE INDEX idx_send_record_create_time ON sms_send_record(create_time);
-CREATE INDEX idx_send_record_channel ON sms_send_record(channel_id);
+-- 关键索引优化 (针对热数据查询模式)
+CREATE INDEX idx_hot_tenant_status ON sms_send_record_hot(tenant_id, send_status) WHERE send_status IN ('WAITING', 'SENDING');
+CREATE INDEX idx_hot_message_id ON sms_send_record_hot(message_id);
+CREATE INDEX idx_hot_out_order ON sms_send_record_hot(out_order_id) WHERE out_order_id IS NOT NULL;
+CREATE INDEX idx_hot_phone_submit ON sms_send_record_hot(phone_number, submit_time DESC);
+CREATE INDEX idx_hot_channel ON sms_send_record_hot(channel_id);
+CREATE INDEX idx_hot_report_match ON sms_send_record_hot(protocol_type, channel_id, message_id) WHERE send_status = 'SENDING';
 -- GIN 索引用于 JSONB 查询
-CREATE INDEX idx_send_record_template_params ON sms_send_record USING GIN(template_params);
-CREATE INDEX idx_send_record_ext_data ON sms_send_record USING GIN(ext_data);
-
--- 创建分区表示例 (按月分区，实际使用时根据数据量调整)
--- 2025 年分区示例
-CREATE TABLE sms_send_record_202501 PARTITION OF sms_send_record
-    FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
-CREATE TABLE sms_send_record_202502 PARTITION OF sms_send_record
-    FOR VALUES FROM ('2025-02-01') TO ('2025-03-01');
-CREATE TABLE sms_send_record_202503 PARTITION OF sms_send_record
-    FOR VALUES FROM ('2025-03-01') TO ('2025-04-01');
-CREATE TABLE sms_send_record_202504 PARTITION OF sms_send_record
-    FOR VALUES FROM ('2025-04-01') TO ('2025-05-01');
-CREATE TABLE sms_send_record_202505 PARTITION OF sms_send_record
-    FOR VALUES FROM ('2025-05-01') TO ('2025-06-01');
-CREATE TABLE sms_send_record_202506 PARTITION OF sms_send_record
-    FOR VALUES FROM ('2025-06-01') TO ('2025-07-01');
+CREATE INDEX idx_hot_template_params ON sms_send_record_hot USING GIN(template_params);
 
 -- =====================================================
--- 7. 通道使用统计表 (用于分析与计费)
+-- 7. 短信发送历史表模板 (冷表 - 按月归档)
+--    实际使用时需按月创建分区表，如 sms_send_record_hist_202501
+-- =====================================================
+DROP TABLE IF EXISTS sms_send_record_hist_template;
+CREATE TABLE sms_send_record_hist_template (
+    id BIGINT,
+    tenant_id BIGINT NOT NULL,
+    message_id VARCHAR(64) NOT NULL,
+    out_order_id VARCHAR(100),
+    phone_number VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    signature VARCHAR(100),
+    full_content TEXT,
+    template_id BIGINT,
+    template_params JSONB,
+    biz_type VARCHAR(50),
+    channel_id BIGINT,
+    protocol_type VARCHAR(20),
+    charge_count INTEGER DEFAULT 1,
+    unit_price DECIMAL(10, 6) DEFAULT 0.0,
+    total_fee DECIMAL(10, 6) DEFAULT 0.0,
+    send_status VARCHAR(20) NOT NULL,
+    submit_time TIMESTAMP,
+    send_time TIMESTAMP,
+    report_time TIMESTAMP,
+    report_content VARCHAR(500),
+    delivered_status VARCHAR(20),
+    error_code VARCHAR(50),
+    error_message TEXT,
+    retry_count INTEGER DEFAULT 0,
+    is_callback BOOLEAN DEFAULT FALSE,
+    callback_time TIMESTAMP,
+    callback_status VARCHAR(20),
+    ext_data JSONB,
+    create_time TIMESTAMP,
+    update_time TIMESTAMP,
+    archived_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '归档时间'
+);
+COMMENT ON TABLE sms_send_record_hist_template IS '短信发送历史表模板 - 用于生成月度归档表';
+
+-- 历史表索引 (只读场景，少量索引即可)
+CREATE INDEX idx_hist_tenant_time ON sms_send_record_hist_template(tenant_id, submit_time DESC);
+CREATE INDEX idx_hist_phone ON sms_send_record_hist_template(phone_number);
+
+-- =====================================================
+-- 8. 通道使用统计表 (预计算，避免 COUNT 大表)
 -- =====================================================
 DROP TABLE IF EXISTS sms_channel_statistics;
 CREATE TABLE sms_channel_statistics (
@@ -281,14 +309,14 @@ CREATE TABLE sms_channel_statistics (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(channel_id, stat_date, stat_hour)
 );
-COMMENT ON TABLE sms_channel_statistics IS '通道使用统计表';
+COMMENT ON TABLE sms_channel_statistics IS '通道使用统计表 - 预计算避免实时聚合';
 
 -- 创建索引
 CREATE INDEX idx_channel_stat_channel_date ON sms_channel_statistics(channel_id, stat_date);
 CREATE INDEX idx_channel_stat_date ON sms_channel_statistics(stat_date);
 
 -- =====================================================
--- 8. 租户使用统计表
+-- 9. 租户使用统计表
 -- =====================================================
 DROP TABLE IF EXISTS sms_tenant_statistics;
 CREATE TABLE sms_tenant_statistics (
@@ -306,7 +334,7 @@ CREATE TABLE sms_tenant_statistics (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(tenant_id, stat_date, stat_hour)
 );
-COMMENT ON TABLE sms_tenant_statistics IS '租户使用统计表';
+COMMENT ON TABLE sms_tenant_statistics IS '租户使用统计表 - 预计算避免实时聚合';
 
 -- 创建索引
 CREATE INDEX idx_tenant_stat_tenant_date ON sms_tenant_statistics(tenant_id, stat_date);
