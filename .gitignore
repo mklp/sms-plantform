@@ -4,37 +4,21 @@
 *.o
 *.obj
 *.out
-*.dll
-*.so
-*.a
-*.pyc
-__pycache__/
-
-# Dependencies
-node_modules/
-venv/
-.venv/
-.mypy_cache/
-.pytest_cache/
-.gradle/
 target/
 
-# Java/Maven specific
-*.jar
-*.war
-*.ear
-!*.jar # Don't ignore jar files in source control if they are part of the source
+# Dependencies
+.gradle/
+**/libs/**
+**/lib/**
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
-*.swo
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
@@ -51,7 +35,7 @@ coverage/
 htmlcov/
 .coverage
 
-# Build directories (if present in Java project)
-build/
-dist/
+# Package manager files
+**/node_modules/**
+**/vendor/**
 ```

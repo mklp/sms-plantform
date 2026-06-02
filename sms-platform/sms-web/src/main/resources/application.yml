@@ -33,7 +33,7 @@ spring:
   # MyBatis-Plus 配置
   mybatis-plus:
     mapper-locations: classpath*:/mapper/**/*.xml
-    type-aliases-package: com.example.sms.dao.entity
+    type-aliases-package: com.zhongway.sms.dao.entity
     configuration:
       map-underscore-to-camel-case: true
       cache-enabled: false
@@ -90,7 +90,7 @@ spring:
 logging:
   level:
     root: INFO
-    com.example.sms: DEBUG
+    com.zhongway.sms: DEBUG
     com.baomidou.mybatisplus: DEBUG
     org.springframework.web: INFO
   pattern:
