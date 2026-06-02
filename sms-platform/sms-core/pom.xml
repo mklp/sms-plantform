@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example.sms</groupId>
+        <artifactId>sms-platform</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sms-core</artifactId>
+    <packaging>jar</packaging>
+    <name>SMS Core</name>
+    <description>短信核心功能模块 - 集成原 SMSGate 项目能力</description>
+
+    <dependencies>
+        <!-- SMS Common -->
+        <dependency>
+            <groupId>com.example.sms</groupId>
+            <artifactId>sms-common</artifactId>
+        </dependency>
+
+        <!-- 原 SMSGate 核心功能 (已发布到 Maven 中央仓库) -->
+        <dependency>
+            <groupId>com.chinamobile.cmos</groupId>
+            <artifactId>sms-core</artifactId>
+        </dependency>
+
+        <!-- Netty -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+        </dependency>
+
+        <!-- Redisson for distributed cache -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- SLF4J -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+    </dependencies>
+</project>

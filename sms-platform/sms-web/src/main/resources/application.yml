@@ -1,0 +1,174 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /sms-api
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    connection-timeout: 30000
+    accept-count: 100
+
+spring:
+  application:
+    name: sms-platform
+  
+  # PostgreSQL 数据源配置
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:sms_platform}?currentSchema=public&ssl=false
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 50
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      validation-timeout: 5000
+      connection-test-query: SELECT 1
+      pool-name: SmsHikariPool
+  
+  # MyBatis-Plus 配置
+  mybatis-plus:
+    mapper-locations: classpath*:/mapper/**/*.xml
+    type-aliases-package: com.example.sms.dao.entity
+    configuration:
+      map-underscore-to-camel-case: true
+      cache-enabled: false
+      log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    global-config:
+      db-config:
+        id-type: assign_id
+        logic-delete-field: deleted
+        logic-delete-value: 1
+        logic-not-delete-value: 0
+  
+  # Redis 配置 (使用 Redisson)
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: 0
+    timeout: 5000ms
+    lettuce:
+      pool:
+        max-active: 50
+        max-idle: 20
+        min-idle: 5
+        max-wait: 3000ms
+  
+  # RocketMQ 配置
+  rocketmq:
+    name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
+    producer:
+      group: sms-producer-group
+      send-message-timeout: 5000
+      retry-times-when-send-failed: 2
+      retry-times-when-send-async-failed: 2
+    consumer:
+      listeners:
+        - topic: sms-send-topic
+          group: sms-consumer-group
+          enabled: true
+  
+  # Jackson JSON 配置
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+    serialization:
+      write-dates-as-timestamps: false
+  
+  # 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.example.sms: DEBUG
+    com.baomidou.mybatisplus: DEBUG
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
+  file:
+    name: /logs/sms-platform/sms-platform.log
+    max-size: 100MB
+    max-history: 30
+
+# Actuator 监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# SMS 平台自定义配置 (大部分业务配置将存储在数据库中)
+sms:
+  platform:
+    # 是否启用异步发送模式 (通过 MQ)
+    async-enabled: true
+    # 默认重试次数 (数据库可覆盖)
+    default-retry-count: 3
+    # 默认超时时间 (毫秒)
+    default-timeout-ms: 5000
+    # 批量发送最大条数
+    batch-max-size: 100
+    # 是否启用通道自动切换
+    channel-auto-switch: true
+    # 通道故障阈值 (连续失败次数)
+    channel-failure-threshold: 5
+    # API 密钥头名称
+    api-key-header: X-API-Key
+    # API 签名头名称
+    api-signature-header: X-API-Signature
+    # 签名时间戳头名称
+    api-timestamp-header: X-API-Timestamp
+    # 签名有效时间 (秒)
+    signature-valid-seconds: 300
+  
+  # 频控配置 (数据库可覆盖)
+  frequency:
+    # 单号码每分钟限制
+    per-minute: 60
+    # 单号码每小时限制
+    per-hour: 300
+    # 单号码每天限制
+    per-day: 1000
+  
+  # 缓存配置
+  cache:
+    # 租户信息缓存过期时间 (秒)
+    tenant-cache-ttl: 300
+    # 通道配置缓存过期时间 (秒)
+    channel-cache-ttl: 60
+    # 模板缓存过期时间 (秒)
+    template-cache-ttl: 600
+  
+  # 分布式锁配置
+  lock:
+    # 默认锁等待时间 (毫秒)
+    default-wait-time: 3000
+    # 默认锁持有时间 (毫秒)
+    default-lease-time: 10000
+
+# 多租户配置
+tenant:
+  # 租户 ID 请求头名称
+  header-name: X-Tenant-ID
+  # 是否启用租户隔离
+  isolation-enabled: true
