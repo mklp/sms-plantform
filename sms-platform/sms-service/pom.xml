@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.example.sms</groupId>
+        <groupId>com.zhongway.sms</groupId>
         <artifactId>sms-platform</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -18,13 +18,13 @@
     <dependencies>
         <!-- SMS Core -->
         <dependency>
-            <groupId>com.example.sms</groupId>
+            <groupId>com.zhongway.sms</groupId>
             <artifactId>sms-core</artifactId>
         </dependency>
 
         <!-- SMS DAO -->
         <dependency>
-            <groupId>com.example.sms</groupId>
+            <groupId>com.zhongway.sms</groupId>
             <artifactId>sms-dao</artifactId>
         </dependency>
 
