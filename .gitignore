@@ -4,58 +4,54 @@
 *.o
 *.obj
 *.out
-build/
-target/
+*.dll
+*.so
+*.a
+*.pyc
+__pycache__/
 
 # Dependencies
 node_modules/
 venv/
 .venv/
-__pycache__/
 .mypy_cache/
 .pytest_cache/
 .gradle/
+target/
+
+# Java/Maven specific
+*.jar
+*.war
+*.ear
+!*.jar # Don't ignore jar files in source control if they are part of the source
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
+*.swo
 
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# OS specific
+# OS generated files
 .DS_Store
 Thumbs.db
 
-# Coverage
+# Coverage reports
 coverage/
 htmlcov/
 .coverage
 
-# Archives
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
+# Build directories (if present in Java project)
+build/
+dist/
 ```
